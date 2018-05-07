@@ -26,9 +26,11 @@ import (
 	"time"
 
 	log "github.com/Sirupsen/logrus"
+	"github.com/contiv/netplugin/core"
 	"github.com/contiv/netplugin/mgmtfn/k8splugin/cniapi"
 	"github.com/contiv/netplugin/netmaster/intent"
 	"github.com/contiv/netplugin/netmaster/master"
+	//"github.com/contiv/netplugin/netmaster/mastercfg"
 	"github.com/contiv/netplugin/netplugin/cluster"
 	"github.com/contiv/netplugin/utils"
 	"github.com/contiv/netplugin/utils/netutils"
@@ -498,9 +500,51 @@ func deletePod(w http.ResponseWriter, r *http.Request, vars map[string]string) (
 		setErrorResp(&resp, "Error getting labels", err)
 		return resp, err
 	}
+	*/
+
+	// Get the state driver
+	stateDriver, err := utils.GetStateDriver()
+	if err != nil {
+		return resp, err
+	}
+
+	epReq := epSpec{}
+	// Read the state of a endpoint
+	//operEp := &k8splugin.cniEndpointState{}
+	operEp := &cniEndpointState{}
+	operEp.StateDriver = stateDriver
+	eperr := operEp.Read(pInfo.InfraContainerID)
+
+	if core.ErrIfKeyExists(eperr) != nil {
+		log.Errorf("Couldn't get key-ep %v when delete ep", eperr)
+		return resp, eperr
+	}
+
+	if eperr != nil {
+		log.Warnf("Couldn't get ep state when del ep %v", eperr)
+		return resp, eperr
+	}
+	/*
+	resp.Tenant = tenant
+	resp.Network = netw
+	resp.Group = epg
+	resp.EndpointID = pInfo.InfraContainerID
+	resp.Name = pInfo.Name
+	*/
+	netStr := strings.Split(operEp.NetID, ".")
+	if len(netStr) == 2 {
+		tenantID := netStr[1]
+		networkID := netStr[0]
+		epReq.Tenant = tenantID
+		epReq.Network = networkID
+	}
+
+	epReq.Group = ""   //we don't use endpointgroup temporary
+	epReq.EndpointID = pInfo.InfraContainerID
+	epReq.Name = pInfo.Name
 
 	netPlugin.DeleteHostAccPort(epReq.EndpointID)
-	if err = epCleanUp(epReq); err != nil {
+	if err = epCleanUp(&epReq); err != nil {
 		log.Errorf("failed to delete pod, error: %s", err)
 	}
 	resp.Result = 0
